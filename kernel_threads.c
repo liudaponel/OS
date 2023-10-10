@@ -47,7 +47,7 @@ int mythread_startup(void* arg){
 void* create_stack(int size, int thread_num) {
 	int stack_fd;
 	void* stack;
-	char* stack_file = malloc(100);
+	char* stack_file = malloc(30);
 	
 	snprintf(stack_file, sizeof(stack_file), "stack-%d", thread_num);
 	
@@ -65,29 +65,32 @@ void* create_stack(int size, int thread_num) {
 
 int mythread_create(mythread_t* mytid, start_routine_t start_routine, void* arg) {
 	static int thread_num = 0;
-	mythread_t* mythread = malloc(sizeof(mythread_t));
 	
 	thread_num++;
 	
 	void* child_stack = create_stack(STACK_SIZE, thread_num);
 	
-	mythread->mythread_id = thread_num;
-	mythread->start_routine = start_routine;
-	mythread->arg = arg;
-	mythread->joined = 0;
-	mythread->exited = 0;
+	mytid->mythread_id = thread_num;
+	mytid->start_routine = start_routine;
+	mytid->arg = arg;
+	mytid->joined = 0;
+	mytid->exited = 0;
 	
 	printf("start clone\n");
-	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND, (void*)mythread);
+	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND, (void*)mytid);
 	if(child_pid == -1) {
 		printf("clone failed");
 		return -1;
 	}
 	printf("finish clone\n");
+	printf("main: in create   %d\n", mytid->joined);
+	
+	return 0;
 }
 
 int mythread_join(mythread_t mytid, void** retval){
 	mythread_t* mythread = &mytid;
+	printf("mythread_join: %d\n", mythread->joined);
 	
 	while(!mythread->exited){
 		printf("main: sleep\n");
@@ -101,7 +104,7 @@ int mythread_join(mythread_t mytid, void** retval){
 	return 0;
 }
 
-void* mythread(void* arg) {
+void* mythreadFunc(void* arg) {
 	char* str = (char*)arg;
 	
 	for (int i = 0; i < 5; ++i){
@@ -113,7 +116,8 @@ void* mythread(void* arg) {
 int main() {
 	mythread_t tid;
 	
-	mythread_create(&tid, &mythread, "hello from main");
+	mythread_create(&tid, &mythreadFunc, "hello from main");
+	printf("main: after create   joined = %d\n", tid.joined);
 	
 	void** retval;
 	mythread_join(tid, retval);
