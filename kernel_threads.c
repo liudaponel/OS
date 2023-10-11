@@ -12,6 +12,11 @@
 #define _GNU_SOURCE
 #include <linux/sched.h>
 #include <sys/syscall.h>
+#include <signal.h>
+
+#include <pthread.h>
+#include <errno.h>
+#include <sys/types.h>
 
 #define PAGE 4096
 #define STACK_SIZE PAGE*8
@@ -29,18 +34,19 @@ typedef struct _mythread {
 
 
 int mythread_startup(void* arg){
+	printf("1234331243\n");
 	mythread_t* mythread = (mythread_t*)arg;
 	
-	printf("0\n");
-	printf("%s\n", (char*)mythread->arg);
+	printf("in startup\n");
 	mythread->retval = mythread->start_routine(mythread->arg);
 	printf("1\n");
 	mythread->exited = 1;
 	
 	//wait until join
-	while(mythread->joined)
+	while(!mythread->joined) {
 		sleep(1);
-	
+		printf("i wait join!!!!! \n");
+	}
 	return 0;
 }
 
@@ -77,22 +83,24 @@ int mythread_create(mythread_t* mytid, start_routine_t start_routine, void* arg)
 	mytid->exited = 0;
 	
 	printf("start clone\n");
-	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND, (void*)mytid);
+	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, 
+				CLONE_VM|CLONE_FILES|CLONE_THREAD|CLONE_SIGHAND|SIGCHLD|
+                CLONE_FS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, (void*)mytid);
 	if(child_pid == -1) {
 		printf("clone failed");
 		return -1;
 	}
-	printf("finish clone\n");
-	printf("main: in create   %d\n", mytid->joined);
+	sleep(2);
+	printf("main: in create (%d)  %d\n", child_pid, gettid());
 	
 	return 0;
 }
 
-int mythread_join(mythread_t mytid, void** retval){
-	mythread_t* mythread = &mytid;
-	printf("mythread_join: %d\n", mythread->joined);
+int mythread_join(mythread_t* mytid, void** retval){
+	mythread_t* mythread = mytid;
+	printf("mythread_join\n");
 	
-	while(!mythread->exited){
+	while(!mytid->exited){
 		printf("main: sleep\n");
 		sleep(1);
 	}
@@ -100,6 +108,8 @@ int mythread_join(mythread_t mytid, void** retval){
 	
 	*retval = mythread->retval;
 	mythread->joined = 1;
+	
+	printf("222222222222222222222\n");
 	
 	return 0;
 }
@@ -110,16 +120,18 @@ void* mythreadFunc(void* arg) {
 	for (int i = 0; i < 5; ++i){
 		printf("hello: '%s'\n", str);
 		sleep(1);
-	}		
+	}
+
+	return NULL;
 }
 
 int main() {
 	mythread_t tid;
 	
-	mythread_create(&tid, &mythreadFunc, "hello from main");
-	printf("main: after create   joined = %d\n", tid.joined);
+	mythread_create(&tid, &mythreadFunc, "argument string 1111");
+	printf("main: after create\n");
 	
-	void** retval;
-	mythread_join(tid, retval);
+	void* retval;
+	mythread_join(&tid, &retval);
 	return 0;
 }
