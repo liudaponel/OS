@@ -1,26 +1,18 @@
-#include <stddef.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <dirent.h>
-#include <string.h>
-#include <stdlib.h>
-#include <linux/limits.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
 #define _GNU_SOURCE
-#include <linux/sched.h>
-#include <sys/syscall.h>
-#include <signal.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sched.h>
+#include <sys/mman.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
+
+#include <fcntl.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
-#include <sys/time.h>
-
-#include <pthread.h>
-#include <errno.h>
-#include <sys/types.h>
 
 #define PAGE 4096
 #define STACK_SIZE PAGE*8
@@ -34,11 +26,12 @@ typedef struct _mythread {
 	void* 				retval;
 	volatile int		joined;
 	volatile int 		exited;
-} mythread_t;
+} mythread_struct_t;
 
+typedef mythread_struct_t* mythread_t;
 
 int mythread_startup(void* arg){
-	mythread_t* mythread = (mythread_t*)arg;
+	mythread_struct_t* mythread = (mythread_struct_t*)arg;
 	
 	mythread->retval = mythread->start_routine(mythread->arg);
 	mythread->exited = 1;
@@ -74,29 +67,29 @@ int mythread_create(mythread_t* mytid, start_routine_t start_routine, void* arg)
 	
 	void* child_stack = create_stack(STACK_SIZE, thread_num);
 	
-	mytid->mythread_id = thread_num;
-	mytid->start_routine = start_routine;
-	mytid->arg = arg;
-	mytid->joined = 0;
-	mytid->exited = 0;
-	mytid->retval = NULL;
+	mythread_struct_t* mythread = (mythread_struct_t*)(child_stack + STACK_SIZE - sizeof(mythread_struct_t));
+	mythread->mythread_id = thread_num;
+	mythread->start_routine = start_routine;
+	mythread->arg = arg;
+	mythread->joined = 0;
+	mythread->exited = 0;
+	mythread->retval = NULL;
 	
-	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, 
-				CLONE_VM|CLONE_FILES|CLONE_THREAD|CLONE_SIGHAND|SIGCHLD, (void*)mytid);
+	*mytid = mythread;
+	
+	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE - sizeof(mythread_struct_t), 
+						CLONE_VM | CLONE_FILES | CLONE_THREAD | CLONE_SIGHAND | SIGCHLD, (void*)mythread);
 	if(child_pid == -1) {
 		printf("clone failed");
 		return -1;
-	}	
+	}
 	return 0;
 }
 
-int mythread_join(mythread_t* mytid, void** retval){
-	mythread_t* mythread = mytid;
+int mythread_join(mythread_t mytid, void** retval){
+	mythread_struct_t* mythread = mytid;
 	
 	while(!mythread->exited){
-		int exited = mythread->exited;
-		printf("%d\n", exited);
-		//write(1, exited, 4);
 		sleep(1);
 	}
 	
@@ -113,20 +106,35 @@ void* mythreadFunc(void* arg) {
 	char* str = (char*)arg;
 	
 	for(size_t i = 0; i < 3; ++i) {
-		printf("mythread: [%d %d %d] arg = '%s'\n", getpid(), getppid(), gettid(), str);
+		write(1, "111111\n", 7);
 		sleep(1);
 	}
 
-	return NULL;
+	return (void*)5;
+}
+
+void* mythreadFunc2(void* arg) {
+	char* str = (char*)arg;
+	
+	for(size_t i = 0; i < 3; ++i) {
+		write(1, "222222\n", 7);
+		//printf("mythread: %d arg = '%s'\n", gettid(), str);
+		sleep(1);
+	}
+
+	return (void*)5;
 }
 
 int main() {
-	mythread_t tid;
+	mythread_t tid1, tid2;
 	
-	mythread_create(&tid, mythreadFunc, "argument string 1111");
-	printf("main: after create\n");
-	
-	void* retval;
-	mythread_join(&tid, &retval);
+	mythread_create(&tid1, mythreadFunc, "argument string 1111");
+	mythread_create(&tid2, mythreadFunc2, "argument string 2222");
+	void *retval1, *retval2;
+	printf("threads created\n");
+	mythread_join(tid1, &retval1);
+	printf("tid1 joined\n");	
+	mythread_join(tid2, &retval2);
+	printf("tid2 joined\n");	
 	return 0;
 }
