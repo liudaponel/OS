@@ -13,6 +13,10 @@
 #include <linux/sched.h>
 #include <sys/syscall.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <linux/futex.h>
+#include <sys/time.h>
 
 #include <pthread.h>
 #include <errno.h>
@@ -34,26 +38,20 @@ typedef struct _mythread {
 
 
 int mythread_startup(void* arg){
-	printf("1234331243\n");
 	mythread_t* mythread = (mythread_t*)arg;
 	
-	printf("in startup\n");
 	mythread->retval = mythread->start_routine(mythread->arg);
-	printf("1\n");
 	mythread->exited = 1;
 	
 	//wait until join
-	while(!mythread->joined) {
-		sleep(1);
-		printf("i wait join!!!!! \n");
-	}
+	syscall(SYS_futex, &mythread->joined, FUTEX_WAIT, 1, NULL, NULL, 0);
 	return 0;
 }
 
 void* create_stack(int size, int thread_num) {
 	int stack_fd;
 	void* stack;
-	char* stack_file = malloc(30);
+	char stack_file[256];
 	
 	snprintf(stack_file, sizeof(stack_file), "stack-%d", thread_num);
 	
@@ -81,35 +79,32 @@ int mythread_create(mythread_t* mytid, start_routine_t start_routine, void* arg)
 	mytid->arg = arg;
 	mytid->joined = 0;
 	mytid->exited = 0;
+	mytid->retval = NULL;
 	
-	printf("start clone\n");
 	int child_pid = clone(mythread_startup, child_stack + STACK_SIZE, 
-				CLONE_VM|CLONE_FILES|CLONE_THREAD|CLONE_SIGHAND|SIGCHLD|
-                CLONE_FS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, (void*)mytid);
+				CLONE_VM|CLONE_FILES|CLONE_THREAD|CLONE_SIGHAND|SIGCHLD, (void*)mytid);
 	if(child_pid == -1) {
 		printf("clone failed");
 		return -1;
-	}
-	sleep(2);
-	printf("main: in create (%d)  %d\n", child_pid, gettid());
-	
+	}	
 	return 0;
 }
 
 int mythread_join(mythread_t* mytid, void** retval){
 	mythread_t* mythread = mytid;
-	printf("mythread_join\n");
 	
-	while(!mytid->exited){
-		printf("main: sleep\n");
+	while(!mythread->exited){
+		int exited = mythread->exited;
+		printf("%d\n", exited);
+		//write(1, exited, 4);
 		sleep(1);
 	}
-	printf("main: mythread finished\n");
 	
-	*retval = mythread->retval;
+	if(retval != NULL){
+		*retval = mythread->retval;
+	}
 	mythread->joined = 1;
-	
-	printf("222222222222222222222\n");
+	syscall(SYS_futex, &mythread->joined, FUTEX_WAKE, 1, NULL, NULL, 0);
 	
 	return 0;
 }
@@ -117,8 +112,8 @@ int mythread_join(mythread_t* mytid, void** retval){
 void* mythreadFunc(void* arg) {
 	char* str = (char*)arg;
 	
-	for (int i = 0; i < 5; ++i){
-		printf("hello: '%s'\n", str);
+	for(size_t i = 0; i < 3; ++i) {
+		printf("mythread: [%d %d %d] arg = '%s'\n", getpid(), getppid(), gettid(), str);
 		sleep(1);
 	}
 
@@ -128,7 +123,7 @@ void* mythreadFunc(void* arg) {
 int main() {
 	mythread_t tid;
 	
-	mythread_create(&tid, &mythreadFunc, "argument string 1111");
+	mythread_create(&tid, mythreadFunc, "argument string 1111");
 	printf("main: after create\n");
 	
 	void* retval;
