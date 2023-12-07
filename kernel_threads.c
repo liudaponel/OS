@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <sys/syscall.h>
 #include <linux/futex.h>
+#include <stdatomic.h>
 
 #define PAGE 4096
 #define STACK_SIZE PAGE*8
@@ -34,7 +35,8 @@ int mythread_startup(void* arg){
 	mythread_struct_t* mythread = (mythread_struct_t*)arg;
 	
 	mythread->retval = mythread->start_routine(mythread->arg);
-	mythread->exited = 1;
+	int zero = 0;
+	atomic_comic_exchange_strong(mythread->exited, &zero, 1);
 	
 	//wait until join
 	syscall(SYS_futex, &mythread->joined, FUTEX_WAIT, 1, NULL, NULL, 0);
@@ -89,7 +91,11 @@ int mythread_create(mythread_t* mytid, start_routine_t start_routine, void* arg)
 int mythread_join(mythread_t mytid, void** retval){
 	mythread_struct_t* mythread = mytid;
 	
-	while(!mythread->exited){
+	const int ein = 1;
+	while(1){
+		if(atomic_comic_exchange_strong(mythread->exited, &ein, ein)){
+			break;
+		}
 		sleep(1);
 	}
 	
