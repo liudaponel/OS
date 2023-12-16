@@ -24,23 +24,28 @@ int thread3 = 0;
 int thread_change = 0;
 
 pthread_mutex_t* changer_sync;
+pthread_mutex_t* storage_sync;
 
 
 void* _1_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
-		printf("0");
+		pthread_mutex_lock(storage_sync);
 		Node* cur = storage->first;
+		pthread_mutex_unlock(storage_sync);
+		
 		pthread_mutex_lock(cur->sync);
 		while(cur->next != NULL){
 			pthread_mutex_lock(cur->next->sync);
 			if(strlen(cur->value) < strlen(cur->next->value)){
-				++thread1;
+				
 			}
 			pthread_mutex_unlock(cur->sync);
 			cur = cur->next;
 		}
+		pthread_mutex_unlock(cur->sync);
+		++thread1;
 	}
 }
 
@@ -48,16 +53,21 @@ void* _2_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
+		pthread_mutex_lock(storage_sync);
 		Node* cur = storage->first;
+		pthread_mutex_unlock(storage_sync);
+		
 		pthread_mutex_lock(cur->sync);
 		while(cur->next != NULL){
 			pthread_mutex_lock(cur->next->sync);
 			if(strlen(cur->value) > strlen(cur->next->value)){
-				++thread2;
+				
 			}
 			pthread_mutex_unlock(cur->sync);
 			cur = cur->next;
 		}
+		pthread_mutex_unlock(cur->sync);
+		++thread2;
 	}
 }
 
@@ -65,16 +75,21 @@ void* _3_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
+		pthread_mutex_lock(storage_sync);
 		Node* cur = storage->first;
+		pthread_mutex_unlock(storage_sync);
+		
 		pthread_mutex_lock(cur->sync);
 		while(cur->next != NULL){
 			pthread_mutex_lock(cur->next->sync);
 			if(strlen(cur->value) == strlen(cur->next->value)){
-				++thread3;
+				
 			}
 			pthread_mutex_unlock(cur->sync);
 			cur = cur->next;
 		}
+		pthread_mutex_unlock(cur->sync);
+		++thread3;
 	}
 }
 
@@ -83,16 +98,18 @@ void* _change_thread(void* arg) {
 	srand(time(NULL));
 	
 	while(1){
+		pthread_mutex_lock(storage_sync);
 		Node* cur = storage->first;
+		
 		pthread_mutex_lock(cur->sync);
 		pthread_mutex_lock(cur->next->sync);
-		pthread_mutex_lock(cur->next->next->sync);
 		if(rand() % 2){
 			Node* c = cur;
 			Node* cn = cur->next;
 			Node* cnn = cur->next->next;
 			
 			storage->first = cn;
+			cur = storage->first;
 			cn->next = c;
 			c->next = cnn;
 			
@@ -100,11 +117,9 @@ void* _change_thread(void* arg) {
 			++thread_change;
 			pthread_mutex_unlock(changer_sync);
 		}
-		pthread_mutex_unlock(cur->sync);
-		cur = cur->next;
+		pthread_mutex_unlock(storage_sync);
 		while(1){
 			pthread_mutex_lock(cur->next->next->sync);
-			
 			if(rand() % 2){
 				Node* cnnn = cur->next->next->next;
 				Node* cn = cur->next;
@@ -125,6 +140,8 @@ void* _change_thread(void* arg) {
 			}
 			cur = cur->next;
 		}
+		pthread_mutex_unlock(cur->next->sync);
+		pthread_mutex_unlock(cur->next->next->sync);
 	}
 }
 
@@ -158,7 +175,8 @@ int main(){
 	//заполнение
 	for(int i = 0; i < size - 1; ++i){
 		Node* curNew = malloc(sizeof(Node));
-		int len = rand() % 100;
+		//int len = rand() % 100;
+		int len = i + 2;
 		for(int j = 0; j < len; ++j){
 			curNew->value[j] = 'a';
 		}
@@ -169,6 +187,7 @@ int main(){
 		cur = cur->next;
 	}
 	changer_sync = malloc(sizeof(pthread_mutex_t));
+	storage_sync = malloc(sizeof(pthread_mutex_t));
 
 	//создание трех потоков
 	err = pthread_create(&tid, NULL, _1_thread, storage);
@@ -210,5 +229,6 @@ int main(){
 		return -1;
 	}
 	
+	pthread_exit(NULL);
 	return 0;
 }
