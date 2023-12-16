@@ -41,8 +41,9 @@ void* _1_thread(void* arg) {
 			if(strlen(cur->value) < strlen(cur->next->value)){
 				
 			}
-			pthread_mutex_unlock(cur->sync);
+			Node* curLast = cur;
 			cur = cur->next;
+			pthread_mutex_unlock(curLast->sync);
 		}
 		pthread_mutex_unlock(cur->sync);
 		++thread1;
@@ -63,8 +64,9 @@ void* _2_thread(void* arg) {
 			if(strlen(cur->value) > strlen(cur->next->value)){
 				
 			}
-			pthread_mutex_unlock(cur->sync);
+			Node* curLast = cur;
 			cur = cur->next;
+			pthread_mutex_unlock(curLast->sync);
 		}
 		pthread_mutex_unlock(cur->sync);
 		++thread2;
@@ -85,8 +87,9 @@ void* _3_thread(void* arg) {
 			if(strlen(cur->value) == strlen(cur->next->value)){
 				
 			}
-			pthread_mutex_unlock(cur->sync);
+			Node* curLast = cur;
 			cur = cur->next;
+			pthread_mutex_unlock(curLast->sync);
 		}
 		pthread_mutex_unlock(cur->sync);
 		++thread3;
@@ -133,15 +136,15 @@ void* _change_thread(void* arg) {
 				++thread_change;
 				pthread_mutex_unlock(changer_sync);
 			}
-			
-			pthread_mutex_unlock(cur->sync);
-			if(cur->next->next->next == NULL){
+			Node* curLast = cur;
+			cur = cur->next;
+			pthread_mutex_unlock(curLast->sync);
+			if(cur->next->next == NULL){
 				break;
 			}
-			cur = cur->next;
 		}
+		pthread_mutex_unlock(cur->sync);
 		pthread_mutex_unlock(cur->next->sync);
-		pthread_mutex_unlock(cur->next->next->sync);
 	}
 }
 
