@@ -92,6 +92,12 @@ int main(){
     addr.sin_family = AF_INET;
 	addr.sin_port = htons(PORT);
     addr.sin_addr.s_addr = INADDR_ANY;
+	
+	int opt = 1;
+	if (setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+        perror("setsockopt error");
+        return 0;
+    }
     
     if (bind(sock_proxy, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         perror("bind error");
@@ -104,6 +110,9 @@ int main(){
     }
 
     printf("HTTP proxy started\n");
+	
+	pthread_attr_t attr;
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	int len = sizeof(addr);
     while (1) {
@@ -114,7 +123,7 @@ int main(){
         }
 
         pthread_t tid;
-        if (pthread_create(&tid, NULL, ClientFunc, &sock_client) != 0) {
+        if (pthread_create(&tid, &attr, ClientFunc, &sock_client) != 0) {
 			perror("pthread_create error");
             continue;
         }
