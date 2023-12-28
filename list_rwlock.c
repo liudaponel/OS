@@ -10,7 +10,7 @@
 typedef struct _Node {
 	char 				value[100];
 	struct 				_Node* next;
-	pthread_mutex_t* 	sync;
+	pthread_rwlock_t* 	sync;
 } Node;
 
 typedef struct _Storage {
@@ -23,29 +23,29 @@ int thread2 = 0;
 int thread3 = 0;
 int thread_change = 0;
 
-pthread_mutex_t* changer_sync;
-pthread_mutex_t* storage_sync;
+pthread_rwlock_t* changer_sync;
+pthread_rwlock_t* storage_sync;
 
 
 void* _1_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
-		pthread_mutex_lock(storage_sync);
+		pthread_rwlock_rdlock(storage_sync);
 		Node* cur = storage->first;
-		pthread_mutex_unlock(storage_sync);
+		pthread_rwlock_unlock(storage_sync);
 		
-		pthread_mutex_lock(cur->sync);
+		pthread_rwlock_rdlock(cur->sync);
 		while(cur->next != NULL){
-			pthread_mutex_lock(cur->next->sync);
+			pthread_rwlock_rdlock(cur->next->sync);
 			if(strlen(cur->value) < strlen(cur->next->value)){
 				
 			}
 			Node* curLast = cur;
 			cur = cur->next;
-			pthread_mutex_unlock(curLast->sync);
+			pthread_rwlock_unlock(curLast->sync);
 		}
-		pthread_mutex_unlock(cur->sync);
+		pthread_rwlock_unlock(cur->sync);
 		++thread1;
 	}
 }
@@ -54,21 +54,21 @@ void* _2_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
-		pthread_mutex_lock(storage_sync);
+		pthread_rwlock_rdlock(storage_sync);
 		Node* cur = storage->first;
-		pthread_mutex_unlock(storage_sync);
+		pthread_rwlock_unlock(storage_sync);
 		
-		pthread_mutex_lock(cur->sync);
+		pthread_rwlock_rdlock(cur->sync);
 		while(cur->next != NULL){
-			pthread_mutex_lock(cur->next->sync);
+			pthread_rwlock_rdlock(cur->next->sync);
 			if(strlen(cur->value) > strlen(cur->next->value)){
 				
 			}
 			Node* curLast = cur;
 			cur = cur->next;
-			pthread_mutex_unlock(curLast->sync);
+			pthread_rwlock_unlock(curLast->sync);
 		}
-		pthread_mutex_unlock(cur->sync);
+		pthread_rwlock_unlock(cur->sync);
 		++thread2;
 	}
 }
@@ -77,21 +77,21 @@ void* _3_thread(void* arg) {
 	Storage* storage = (Storage*)arg;
 	
 	while(1){
-		pthread_mutex_lock(storage_sync);
+		pthread_rwlock_rdlock(storage_sync);
 		Node* cur = storage->first;
-		pthread_mutex_unlock(storage_sync);
+		pthread_rwlock_unlock(storage_sync);
 		
-		pthread_mutex_lock(cur->sync);
+		pthread_rwlock_rdlock(cur->sync);
 		while(cur->next != NULL){
-			pthread_mutex_lock(cur->next->sync);
+			pthread_rwlock_rdlock(cur->next->sync);
 			if(strlen(cur->value) == strlen(cur->next->value)){
 				
 			}
 			Node* curLast = cur;
 			cur = cur->next;
-			pthread_mutex_unlock(curLast->sync);
+			pthread_rwlock_unlock(curLast->sync);
 		}
-		pthread_mutex_unlock(cur->sync);
+		pthread_rwlock_unlock(cur->sync);
 		++thread3;
 	}
 }
@@ -101,11 +101,11 @@ void* _change_thread(void* arg) {
 	srand(time(NULL));
 	
 	while(1){
-		pthread_mutex_lock(storage_sync);
+		pthread_rwlock_wrlock(storage_sync);
 		Node* cur = storage->first;
 		
-		pthread_mutex_lock(cur->sync);
-		pthread_mutex_lock(cur->next->sync);
+		pthread_rwlock_wrlock(cur->sync);
+		pthread_rwlock_wrlock(cur->next->sync);
 		if(rand() % 2){
 			Node* c = cur;
 			Node* cn = cur->next;
@@ -116,13 +116,13 @@ void* _change_thread(void* arg) {
 			cn->next = c;
 			c->next = cnn;
 			
-			pthread_mutex_lock(changer_sync);
+			pthread_rwlock_wrlock(changer_sync);
 			++thread_change;
-			pthread_mutex_unlock(changer_sync);
+			pthread_rwlock_unlock(changer_sync);
 		}
-		pthread_mutex_unlock(storage_sync);
+		pthread_rwlock_unlock(storage_sync);
 		while(1){
-			pthread_mutex_lock(cur->next->next->sync);
+			pthread_rwlock_wrlock(cur->next->next->sync);
 			if(rand() % 2){
 				Node* cnnn = cur->next->next->next;
 				Node* cn = cur->next;
@@ -132,19 +132,19 @@ void* _change_thread(void* arg) {
 				cur->next->next = cn;
 				cur->next->next->next = cnnn;
 				
-				pthread_mutex_lock(changer_sync);
+				pthread_rwlock_wrlock(changer_sync);
 				++thread_change;
-				pthread_mutex_unlock(changer_sync);
+				pthread_rwlock_unlock(changer_sync);
 			}
 			Node* curLast = cur;
 			cur = cur->next;
-			pthread_mutex_unlock(curLast->sync);
+			pthread_rwlock_unlock(curLast->sync);
 			if(cur->next->next == NULL){
 				break;
 			}
 		}
-		pthread_mutex_unlock(cur->sync);
-		pthread_mutex_unlock(cur->next->sync);
+		pthread_rwlock_unlock(cur->sync);
+		pthread_rwlock_unlock(cur->next->sync);
 	}
 }
 
@@ -152,9 +152,9 @@ void *qmonitor(void *arg) {
 	printf("qmonitor: [%d %d %d]\n", getpid(), getppid(), gettid());
 
 	while (1) {
-		pthread_mutex_lock(changer_sync);
+		pthread_rwlock_rdlock(changer_sync);
 		printf("thread1: %d   thread2: %d   thread3: %d      thread_change: %d\n", thread1, thread2, thread3, thread_change);
-		pthread_mutex_unlock(changer_sync);
+		pthread_rwlock_unlock(changer_sync);
 		sleep(1);
 	}
 
@@ -170,7 +170,8 @@ int main(){
 	Node* first = malloc(sizeof(Node));
 	first->value[0] = 'a';
 	first->next = NULL;
-	first->sync = malloc(sizeof(pthread_mutex_t));
+	first->sync = malloc(sizeof(pthread_rwlock_t));
+	pthread_rwlock_init(first->sync, NULL);
 	storage->first = first;
 	
 	srand(time(NULL));
@@ -183,14 +184,17 @@ int main(){
 		for(int j = 0; j < len; ++j){
 			curNew->value[j] = 'a';
 		}
-		curNew->sync = malloc(sizeof(pthread_mutex_t));
+		curNew->sync = malloc(sizeof(pthread_rwlock_t));
+		pthread_rwlock_init(curNew->sync, NULL);
 		curNew->next = NULL;
 		
 		cur->next = curNew;
 		cur = cur->next;
 	}
-	changer_sync = malloc(sizeof(pthread_mutex_t));
-	storage_sync = malloc(sizeof(pthread_mutex_t));
+	changer_sync = malloc(sizeof(pthread_rwlock_t));
+	storage_sync = malloc(sizeof(pthread_rwlock_t));
+	pthread_rwlock_init(changer_sync, NULL);
+	pthread_rwlock_init(storage_sync, NULL);
 
 	//создание трех потоков
 	err = pthread_create(&tid, NULL, _1_thread, storage);
