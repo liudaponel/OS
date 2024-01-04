@@ -54,42 +54,30 @@ void* ClientFunc(void* socket_client) {
     int sock_server;
 
 	//первый запрос с хостом сервера
-	char* request = NULL;
 	int size = 0;
+    char host[HOST_NAME_MAX + 1];
 	while (1) {
-        bytes = recv(client_sock, buffer, BUFF_SIZE, 0);
+        bytes = recv(client_sock, buff, BUFF_SIZE, 0);
         if (bytes <= 0) {
-			close(sock_client);
-            return 0;
+			break;
         }
 
-        request = realloc(request, size + bytes);
-        memcpy(request + size, buff, bytes);
-
-        if (strstr(request, "\r\n\r\n") != NULL) {
-            break;
+        if (strstr(buff, "\r\n\r\n") != NULL && !sock_server) {
+            FoundHeaderHost(buff, host);
+            if(!host){
+                close(sock_client);
+                return 0;
+            }
+            sock_server = ConnectToServer(host);
+            if (!sock_server) {
+                close(sock_client);
+                return NULL;
+            }
         }
-		size += bytes;
+
+        // Переотправляем запрос на сервер
+        send(sock_server, buff, size, 0);
     }
-	
-	printf("Request:  %s\n", buff);
-
-	char host[HOST_NAME_MAX + 1];
-    FoundHeaderHost(request, host);
-	if(!host){
-		close(sock_client);
-		return 0;
-	}
-
-    sock_server = ConnectToServer(host);
-    if (!sock_server) {
-        close(sock_client);
-        return NULL;
-    }
-
-    // Переотправляем запрос на сервер
-    send(sock_server, request, size, 0);
-	free(request);
 
     // Получаем ответ
     while (bytes > 0) {
